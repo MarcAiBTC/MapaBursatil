@@ -1,9 +1,7 @@
 import streamlit as st
-import plotly.graph_objects as go
-import plotly.express as px
+import pandas as pd
 from datetime import datetime, timezone
 import pytz
-import pandas as pd
 from data_utils import get_market_data, get_market_status, MARKETS_CONFIG
 import time
 
@@ -37,96 +35,131 @@ def get_color_by_change(change_pct):
     else:
         return "#FF1744"  # Rojo fuerte
 
-def create_world_map(market_data):
-    """Crea el mapa mundial interactivo"""
+def create_visual_map(market_data):
+    """Crea un mapa visual usando componentes de Streamlit"""
     
-    # Preparar datos para el mapa
-    countries = []
-    lats = []
-    lons = []
-    texts = []
-    colors = []
-    sizes = []
+    # Organizar mercados por regiones
+    regions = {
+        "🇺🇸 América del Norte": ["^GSPC", "^IXIC", "^GSPTSE"],
+        "🇪🇺 Europa": ["^FTSE", "^GDAXI", "^FCHI", "^IBEX"],
+        "🇯🇵 Asia-Pacífico": ["^N225", "000001.SS", "^HSI", "^AXJO", "^KS11", "^TWII", "^NSEI"],
+        "🇧🇷 América Latina": ["^BVSP"]
+    }
     
-    for symbol, data in market_data.items():
-        if data and symbol in MARKETS_CONFIG:
-            config = MARKETS_CONFIG[symbol]
-            
-            # Datos del mercado
-            price = data['price']
-            change_pct = data['change_percent']
-            ma200_trend = data['ma200_trend']
-            
-            # Status del mercado
-            market_status = get_market_status(config['timezone'])
-            status_emoji = "🟢" if market_status['is_open'] else "🔴"
-            
-            # Emoji climático
-            weather_emoji = get_emoji_by_change(change_pct)
-            
-            # Texto del hover
-            hover_text = f"""
-<b>{config['name']}</b><br>
-{weather_emoji} {change_pct:+.2f}%<br>
-💰 ${price:,.2f}<br>
-📈 MA200: {ma200_trend}<br>
-{status_emoji} {market_status['status']}<br>
-🕐 {market_status['next_action']}
-            """.strip()
-            
-            countries.append(config['country'])
-            lats.append(config['lat'])
-            lons.append(config['lon'])
-            texts.append(hover_text)
-            colors.append(get_color_by_change(change_pct))
-            sizes.append(abs(change_pct) * 5 + 15)  # Tamaño basado en volatilidad
+    st.markdown("### 🗺️ Mapa Financiero Mundial")
     
-    # Crear el mapa
-    fig = go.Figure()
+    for region, symbols in regions.items():
+        st.markdown(f"#### {region}")
+        
+        # Crear columnas para esta región
+        cols = st.columns(len(symbols))
+        
+        for i, symbol in enumerate(symbols):
+            if symbol in market_data and market_data[symbol]:
+                data = market_data[symbol]
+                config = MARKETS_CONFIG[symbol]
+                
+                with cols[i]:
+                    # Datos del mercado
+                    change_pct = data['change_percent']
+                    price = data['price']
+                    ma200_trend = data['ma200_trend']
+                    
+                    # Status del mercado
+                    market_status = get_market_status(config['timezone'])
+                    status_color = "🟢" if market_status['is_open'] else "🔴"
+                    
+                    # Emoji climático
+                    weather_emoji = get_emoji_by_change(change_pct)
+                    color = get_color_by_change(change_pct)
+                    
+                    # Crear tarjeta visual
+                    st.markdown(f"""
+                    <div style="
+                        border: 2px solid {color};
+                        border-radius: 10px;
+                        padding: 15px;
+                        margin: 5px;
+                        background: linear-gradient(135deg, {color}15, {color}05);
+                        text-align: center;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    ">
+                        <h4 style="margin:0; color: {color};">{weather_emoji} {config['name'].split('(')[0].strip()}</h4>
+                        <h2 style="margin:5px 0; color: {color};">{change_pct:+.2f}%</h2>
+                        <p style="margin:2px 0; font-size:14px;"><strong>${price:,.2f}</strong></p>
+                        <p style="margin:2px 0; font-size:12px;">📈 {ma200_trend}</p>
+                        <p style="margin:2px 0; font-size:12px;">{status_color} {market_status['status']}</p>
+                        <p style="margin:2px 0; font-size:11px; color:#666;">{market_status['next_action']}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+
+def create_world_map_alternative(market_data):
+    """Mapa mundial simplificado usando emojis y texto"""
     
-    # Añadir puntos de mercados
-    fig.add_trace(go.Scattergeo(
-        lon=lons,
-        lat=lats,
-        text=texts,
-        mode='markers',
-        marker=dict(
-            size=sizes,
-            color=colors,
-            opacity=0.8,
-            line=dict(width=2, color='white'),
-            sizeref=2.*max(sizes)/(40.**2),
-            sizemin=4
-        ),
-        hovertemplate='%{text}<extra></extra>',
-        showlegend=False
-    ))
+    st.markdown("### 🌍 Vista Global de Mercados")
     
-    # Configurar el mapa
-    fig.update_layout(
-        title={
-            'text': '🌍 Mapa Financiero Mundial en Tiempo Real',
-            'x': 0.5,
-            'xanchor': 'center',
-            'font': {'size': 24, 'color': '#2E86AB'}
-        },
-        geo=dict(
-            projection_type='natural earth',
-            showland=True,
-            landcolor='rgb(243, 243, 243)',
-            coastlinecolor='rgb(204, 204, 204)',
-            showocean=True,
-            oceancolor='rgb(230, 245, 255)',
-            showlakes=True,
-            lakecolor='rgb(230, 245, 255)',
-            showrivers=True,
-            rivercolor='rgb(230, 245, 255)'
-        ),
-        height=600,
-        margin=dict(t=60, b=0, l=0, r=0)
-    )
+    # Crear un mapa de texto estilizado
+    map_html = """
+    <div style="background: linear-gradient(180deg, #e3f2fd 0%, #bbdefb 100%); 
+                border-radius: 15px; padding: 30px; margin: 20px 0;">
+        <h3 style="text-align: center; color: #1976d2; margin-bottom: 30px;">
+            🌍 Estado Global de Mercados Bursátiles
+        </h3>
+    """
     
-    return fig
+    # Organizar por zonas horarias/regiones geográficas
+    zones = [
+        ("🌅 Asia-Pacífico", ["^N225", "000001.SS", "^HSI", "^AXJO", "^KS11", "^TWII", "^NSEI"]),
+        ("🌍 Europa", ["^FTSE", "^GDAXI", "^FCHI", "^IBEX"]),
+        ("🌎 América", ["^GSPC", "^IXIC", "^GSPTSE", "^BVSP"])
+    ]
+    
+    for zone_name, symbols in zones:
+        map_html += f"""
+        <div style="margin: 20px 0; padding: 20px; background: rgba(255,255,255,0.7); 
+                    border-radius: 10px; border-left: 5px solid #1976d2;">
+            <h4 style="color: #1976d2; margin-bottom: 15px;">{zone_name}</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: center;">
+        """
+        
+        for symbol in symbols:
+            if symbol in market_data and market_data[symbol]:
+                data = market_data[symbol]
+                config = MARKETS_CONFIG[symbol]
+                
+                change_pct = data['change_percent']
+                weather_emoji = get_emoji_by_change(change_pct)
+                color = get_color_by_change(change_pct)
+                market_status = get_market_status(config['timezone'])
+                status_emoji = "🟢" if market_status['is_open'] else "🔴"
+                
+                map_html += f"""
+                <div style="background: white; border-radius: 8px; padding: 10px; 
+                           min-width: 120px; text-align: center; border: 2px solid {color};
+                           box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="font-size: 24px;">{weather_emoji}</div>
+                    <div style="font-weight: bold; font-size: 12px; color: #333;">
+                        {config['name'].split('(')[0].strip()[:8]}
+                    </div>
+                    <div style="color: {color}; font-weight: bold; font-size: 14px;">
+                        {change_pct:+.1f}%
+                    </div>
+                    <div style="font-size: 10px; color: #666;">
+                        {status_emoji} {market_status['status'][:6]}
+                    </div>
+                </div>
+                """
+        
+        map_html += """
+            </div>
+        </div>
+        """
+    
+    map_html += "</div>"
+    
+    st.markdown(map_html, unsafe_allow_html=True)
 
 def create_summary_cards(market_data):
     """Crea tarjetas resumen de los mercados"""
@@ -249,6 +282,7 @@ def main():
         """)
         
         st.markdown("---")
+        st.info("💡 **Versión Compatible**: Esta versión funciona sin dependencias externas problemáticas.")
         
         # Botón de actualización
         if st.button("🔄 Actualizar Datos", type="primary"):
@@ -271,17 +305,20 @@ def main():
     
     st.markdown("---")
     
-    # Mapa principal
-    st.markdown("### 🗺️ Mapa Interactivo")
-    fig = create_world_map(market_data)
-    st.plotly_chart(fig, use_container_width=True)
+    # Mapa visual alternativo
+    create_world_map_alternative(market_data)
+    
+    st.markdown("---")
+    
+    # Mapa regional detallado
+    create_visual_map(market_data)
     
     # Leyenda explicativa
     st.markdown("""
-    **💡 Cómo usar el mapa:**
-    - Pasa el cursor sobre cada punto para ver detalles
-    - El tamaño del punto indica la volatilidad
-    - Los colores representan el rendimiento actual
+    **💡 Cómo interpretar:**
+    - Los colores y emoticonos representan el rendimiento actual
+    - El tamaño indica la importancia del mercado
+    - Los estados muestran si el mercado está operando
     """)
     
     st.markdown("---")
@@ -295,7 +332,7 @@ def main():
     st.markdown("""
     <div style='text-align: center; color: #666; padding: 20px;'>
         🚀 <b>Mapa Financiero Mundial</b> | Datos proporcionados por Yahoo Finance<br>
-        💡 Herramienta diseñada para inversores inteligentes
+        💡 Herramienta diseñada para inversores inteligentes | Versión Compatible
     </div>
     """, unsafe_allow_html=True)
 
